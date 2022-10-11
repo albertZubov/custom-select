@@ -1,13 +1,5 @@
 export const data = {
   name: 'car',
-  title: {
-    multi: 'Multi',
-    single: 'Single',
-  },
-  value: {
-    multi: 'multi',
-    single: 'single',
-  },
   multiSelect: true,
   placeholder: 'Список автомобилей',
   options: [
@@ -95,5 +87,5 @@ export const data = {
     },
   ],
   maxVisibleOptions: 7,
-  groupOptions: true,
+  groupOptions: false,
 };

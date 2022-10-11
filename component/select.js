@@ -1,4 +1,5 @@
 import { data } from './test-data.js';
+import State from './state.js';
 const capitalizeFirstLetter = (word) => word[0].toUpperCase() + word.slice(1);
 
 const ClassNames = {
@@ -22,12 +23,32 @@ const Selectors = {
   GROUP_TITLE: '.select__group-title',
 };
 
+const selectAttributes = {
+  title: {
+    multi: 'Multi',
+    single: 'Single',
+  },
+  value: {
+    multi: 'multi',
+    single: 'single',
+  },
+};
+
 const defaultParams = {
   options: [],
 };
 
-class CustomSelect {
+class CustomSelect extends State {
   constructor(target, params = {}) {
+    super({
+      activeOptions: [],
+      activeOption: '',
+      selectIsOpen: false,
+    });
+    this._groupsOptions = null;
+    this._quantityTitle = 0;
+    this._idUnname = Symbol('#');
+
     this._select =
       typeof target === 'string' ? document.querySelector(target) : target;
 
@@ -49,35 +70,24 @@ class CustomSelect {
     this._toggleEl = this._select.querySelector(Selectors.DATA_TOGGLE);
     this._select.addEventListener('click', this._onClickFn);
     this._select.addEventListener('input', this._changeSearchValue.bind(this));
-
-    this._groupsOptions = null;
-    this._activeNodeOptions = [];
-    this._quantityTitle = 0;
-
-    // this._state = {
-    //   activeOptions: [],
-    // };
   }
-
-  // setState() {}
 
   getTemplate() {
     const {
       options,
       name,
       placeholder,
-      title,
       multiSelect,
       groups,
       groupOptions,
-      value,
       maxVisibleOptions,
     } = this._params;
 
+    const { title, value } = selectAttributes;
+
     // добавление группы "Unname" в массив groups
-    const idUnname = Symbol('#');
     groups.push({
-      id: idUnname,
+      id: this._idUnname,
       value: 'unname',
       title: 'Unnamed class',
     });
@@ -94,7 +104,7 @@ class CustomSelect {
   </li>`;
 
     this._params.groupedOptions = groups.map(({ id }) =>
-      options.filter(({ groupId }) => (groupId || idUnname) === id)
+      options.filter(({ groupId }) => (groupId || this._idUnname) === id)
     );
 
     let counter = 0;
@@ -106,10 +116,8 @@ class CustomSelect {
           this._quantityTitle = index + 1;
         }
 
-        console.log(this._quantityTitle);
-
         const group = groups.find(
-          ({ id }) => (groupElems[0].groupId || idUnname) === id
+          ({ id }) => (groupElems[0].groupId || this._idUnname) === id
         );
 
         const titleGroup = group.title;
@@ -175,7 +183,6 @@ class CustomSelect {
     if (target.dataset.select === 'input-search') {
       const searchValue = target.value.toLowerCase();
       const groupsEls = [...this._parentOptions.children];
-      const idUnname = Symbol('#');
 
       const resultOptions = this._params.groupedOptions
         .map((optionsArr) =>
@@ -184,20 +191,15 @@ class CustomSelect {
           )
         )
         .reduce((result, arr) => {
-          result[arr[0]?.groupId || idUnname] = arr.map(({ id }) => id);
+          result[arr[0]?.groupId || this._idUnname] = arr.map(({ id }) => id);
           return result;
         }, {});
 
       groupsEls.forEach((groupEl) => {
-        const groupId = +groupEl.dataset.id || idUnname;
+        const groupId = +groupEl.dataset.id || this._idUnname;
         const includeGroup = resultOptions[groupId];
 
-        groupEl.classList.toggle(
-          ClassNames.HIDE,
-          includeGroup === undefined || includeGroup.length
-            ? !includeGroup
-            : true
-        );
+        groupEl.classList.toggle(ClassNames.HIDE, !includeGroup?.length);
 
         if (!includeGroup) return;
 
@@ -212,14 +214,6 @@ class CustomSelect {
     }
   }
 
-  _updateSingle(option) {
-    const selected = this._select.querySelector(Selectors.OPTION_SELECTED);
-    if (selected) selected.classList.remove(ClassNames.SELECTED);
-    option.classList.add(ClassNames.SELECTED);
-    this._toggleEl.textContent = option.textContent;
-    this._toggleEl.value = option.dataset.value;
-  }
-
   changeActiveOption(id) {
     const option = [...this._optionsEl].find((el) => +el.dataset.id === +id);
     if (option) {
@@ -231,10 +225,6 @@ class CustomSelect {
     }
   }
 
-  // removeActiveOption () {
-
-  // }
-
   disable() {
     this._toggleEl.disabled = true;
     if (this._select.classList.contains(ClassNames.ACTIVE)) this.hide();
@@ -244,24 +234,45 @@ class CustomSelect {
     this._toggleEl.disabled = false;
   }
 
+  _updateSingle(option) {
+    const selected = this._select.querySelector(Selectors.OPTION_SELECTED);
+    if (selected) selected.classList.remove(ClassNames.SELECTED);
+    option.classList.add(ClassNames.SELECTED);
+
+    //TODO  -- эта часть не нравится
+    this.setState({ activeOption: option.dataset.value });
+    this._toggleEl.value = this.state.activeOption;
+    this._toggleEl.textContent = this._params.options.find(
+      (el) => el.value === this.state.activeOption
+    ).title;
+  }
+
+  _changeActiveOptions() {
+    if (!this.state.activeOptions.length)
+      return (this._toggleEl.textContent = 'Выберите из списка');
+
+    this._toggleEl.innerHTML = this.state.activeOptions
+      .map((el) => this._getActiveOptionTemplate(el))
+      .join('');
+  }
+
   _updateMulti(option) {
     const { value } = option.dataset;
     option.classList.toggle(ClassNames.SELECTED);
 
     if (option.classList.contains(ClassNames.SELECTED)) {
-      this._activeNodeOptions.push(value);
+      this.state.activeOptions.push(value);
+      this.setState({ activeOptions: this.state.activeOptions });
     } else {
-      this._activeNodeOptions = this._activeNodeOptions.filter(
-        (el) => el !== value
-      );
+      this.setState({
+        activeOptions: this.state.activeOptions.filter(
+          (elValue) => value !== elValue
+        ),
+      });
     }
 
-    this._toggleEl.innerHTML = this._activeNodeOptions
-      .map((el) => this._getActiveOptionTemplate(el))
-      .join('');
-
-    if (!this._activeNodeOptions.length)
-      this._toggleEl.textContent = 'Выберите из списка';
+    // подписка на изменение activeOptions
+    this.on(this.state.activeOptions, this._changeActiveOptions());
   }
 
   _reset() {
@@ -305,8 +316,6 @@ class CustomSelect {
     this._select.classList.add(ClassNames.ACTIVE);
     this._searchEl.focus();
 
-    console.log(this._quantityTitle);
-
     // расчет динамической высоты options
     const groupTitleHeight =
       this._parentOptions.querySelector(Selectors.GROUP_TITLE)?.offsetHeight ||
@@ -315,6 +324,7 @@ class CustomSelect {
       this._optionsEl[0].offsetHeight * this._params.maxVisibleOptions +
       groupTitleHeight * this._quantityTitle
     }px`;
+    this.setState({ selectIsOpen: true });
 
     // закрытие селекта при клике вне окна
     document.addEventListener('click', this.handleEventWindow);
@@ -329,6 +339,7 @@ class CustomSelect {
     this._optionsEl.forEach((el) => {
       el.classList.remove(ClassNames.SHOW_OPTION);
     });
+    this.setState({ selectIsOpen: false });
 
     // закрытие селекта при клике вне окна
     document.removeEventListener('click', this.handleEventWindow);
@@ -338,9 +349,9 @@ class CustomSelect {
   }
 
   toggle() {
-    this._select.classList.contains(ClassNames.ACTIVE)
-      ? this.hide()
-      : this.show();
+    // TODO насчет этого тоже пообщаться
+    // this.setState({ selectIsOpen: !this.state.selectIsOpen });
+    this.state.selectIsOpen ? this.hide() : this.show();
   }
 
   dispose() {
