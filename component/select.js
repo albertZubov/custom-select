@@ -39,18 +39,20 @@ const defaultParams = {
 };
 
 class CustomSelect extends State {
-  constructor(target, params = {}) {
+  constructor(targetSelect, params = {}) {
     super({
       activeOptions: [],
-      activeOption: '',
       selectIsOpen: false,
+      searchValue: '',
     });
     this._groupsOptions = null;
     this._quantityTitle = 0;
     this._idUnname = Symbol('#');
 
     this._select =
-      typeof target === 'string' ? document.querySelector(target) : target;
+      typeof targetSelect === 'string'
+        ? document.querySelector(targetSelect)
+        : targetSelect;
 
     this._params = {
       ...defaultParams,
@@ -65,11 +67,21 @@ class CustomSelect extends State {
     this._select.innerHTML = this.getTemplate();
     this._searchEl = this._select.querySelector(Selectors.SEARCH);
     this._parentOptions = this._select.querySelector(Selectors.PARENT_OPTIONS);
-    this._onClickFn = this._onClick.bind(this);
     this._optionsEl = this._select.querySelectorAll(Selectors.OPTION);
     this._toggleEl = this._select.querySelector(Selectors.DATA_TOGGLE);
+    this._onClickFn = this._onClick.bind(this);
     this._select.addEventListener('click', this._onClickFn);
-    this._select.addEventListener('input', this._changeSearchValue.bind(this));
+    this._select.addEventListener('input', ({ target }) => {
+      if (target.dataset.select === 'input-search') {
+        this.setState({ searchValue: target.value });
+      }
+    });
+
+    this.on('selectIsOpen', (isOpen) => (isOpen ? this.show() : this.hide()));
+    this.on('activeOptions', () => {
+      this._params.multiSelect ? this._updateMulti() : this._updateSingle();
+    });
+    this.on('searchValue', () => this._changeSearchValue());
   }
 
   getTemplate() {
@@ -163,9 +175,6 @@ class CustomSelect extends State {
       case 'toggle':
         this.toggle();
         break;
-      case 'button':
-        this._changeSelect(target);
-        break;
       case 'option':
         this._changeOptionState(target);
         break;
@@ -179,39 +188,37 @@ class CustomSelect extends State {
     }
   }
 
-  _changeSearchValue({ target }) {
-    if (target.dataset.select === 'input-search') {
-      const searchValue = target.value.toLowerCase();
-      const groupsEls = [...this._parentOptions.children];
+  _changeSearchValue() {
+    const searchValue = this.state.searchValue.toLowerCase();
+    const groupsEls = [...this._parentOptions.children];
 
-      const resultOptions = this._params.groupedOptions
-        .map((optionsArr) =>
-          optionsArr.filter(({ title }) =>
-            title.toLowerCase().includes(searchValue)
-          )
+    const resultOptions = this._params.groupedOptions
+      .map((optionsArr) =>
+        optionsArr.filter(({ title }) =>
+          title.toLowerCase().includes(searchValue)
         )
-        .reduce((result, arr) => {
-          result[arr[0]?.groupId || this._idUnname] = arr.map(({ id }) => id);
-          return result;
-        }, {});
+      )
+      .reduce((result, arr) => {
+        result[arr[0]?.groupId || this._idUnname] = arr.map(({ id }) => id);
+        return result;
+      }, {});
 
-      groupsEls.forEach((groupEl) => {
-        const groupId = +groupEl.dataset.id || this._idUnname;
-        const includeGroup = resultOptions[groupId];
+    groupsEls.forEach((groupEl) => {
+      const groupId = +groupEl.dataset.id || this._idUnname;
+      const includeGroup = resultOptions[groupId];
 
-        groupEl.classList.toggle(ClassNames.HIDE, !includeGroup?.length);
+      groupEl.classList.toggle(ClassNames.HIDE, !includeGroup?.length);
 
-        if (!includeGroup) return;
+      if (!includeGroup) return;
 
-        groupEl.querySelectorAll('[data-select=option]').forEach((optionEl) => {
-          const optionId = +optionEl.dataset.id;
-          optionEl.classList.toggle(
-            ClassNames.HIDE,
-            !includeGroup.includes(optionId)
-          );
-        });
+      groupEl.querySelectorAll('[data-select=option]').forEach((optionEl) => {
+        const optionId = +optionEl.dataset.id;
+        optionEl.classList.toggle(
+          ClassNames.HIDE,
+          !includeGroup.includes(optionId)
+        );
       });
-    }
+    });
   }
 
   changeActiveOption(id) {
@@ -227,52 +234,43 @@ class CustomSelect extends State {
 
   disable() {
     this._toggleEl.disabled = true;
-    if (this._select.classList.contains(ClassNames.ACTIVE)) this.hide();
+    if (this._select.classList.contains(ClassNames.ACTIVE)) {
+      this.setState({ selectIsOpen: false });
+    }
   }
 
   enable() {
     this._toggleEl.disabled = false;
   }
 
-  _updateSingle(option) {
+  _updateSingle() {
+    const option = [...this._optionsEl].find(
+      (el) => el.dataset.value === this.state.activeOptions
+    );
     const selected = this._select.querySelector(Selectors.OPTION_SELECTED);
     if (selected) selected.classList.remove(ClassNames.SELECTED);
     option.classList.add(ClassNames.SELECTED);
+    this._toggleEl.value = option.value;
+    this._toggleEl.textContent = option.textContent;
 
-    //TODO  -- эта часть не нравится
-    this.setState({ activeOption: option.dataset.value });
-    this._toggleEl.value = this.state.activeOption;
-    this._toggleEl.textContent = this._params.options.find(
-      (el) => el.value === this.state.activeOption
-    ).title;
+    this.setState({ selectIsOpen: false });
   }
 
-  _changeActiveOptions() {
-    if (!this.state.activeOptions.length)
+  _updateMulti() {
+    const activeOptions = this.state.activeOptions;
+    this._optionsEl.forEach((option) =>
+      option.classList.toggle(
+        ClassNames.SELECTED,
+        activeOptions.includes(option.dataset.value)
+      )
+    );
+
+    if (!activeOptions.length)
       return (this._toggleEl.textContent = 'Выберите из списка');
 
-    this._toggleEl.innerHTML = this.state.activeOptions
-      .map((el) => this._getActiveOptionTemplate(el))
+    this._toggleEl.innerHTML = activeOptions
+      .map(this._getActiveOptionTemplate)
       .join('');
-  }
-
-  _updateMulti(option) {
-    const { value } = option.dataset;
-    option.classList.toggle(ClassNames.SELECTED);
-
-    if (option.classList.contains(ClassNames.SELECTED)) {
-      this.state.activeOptions.push(value);
-      this.setState({ activeOptions: this.state.activeOptions });
-    } else {
-      this.setState({
-        activeOptions: this.state.activeOptions.filter(
-          (elValue) => value !== elValue
-        ),
-      });
-    }
-
-    // подписка на изменение activeOptions
-    this.on(this.state.activeOptions, this._changeActiveOptions());
   }
 
   _reset() {
@@ -286,22 +284,33 @@ class CustomSelect extends State {
   }
 
   _changeOptionState(target) {
+    const { value } = target.dataset;
+    let stateActiveOptions;
     if (target.classList.contains(ClassNames.SELECT)) return;
 
     if (this._params.multiSelect) {
-      this._updateMulti(target);
+      stateActiveOptions = this.state.activeOptions.includes(value)
+        ? this.state.activeOptions.filter((el) => el !== value)
+        : this.state.activeOptions.concat(value);
     } else {
-      this._updateSingle(target);
-      this.hide();
+      stateActiveOptions = value;
     }
+
+    this.setState({
+      activeOptions: stateActiveOptions,
+    });
   }
 
   handleEventWindow = (evt) => {
-    if (!evt.composedPath().includes(this._select)) return this.hide();
+    if (!evt.composedPath().includes(this._select)) {
+      this.setState({ selectIsOpen: false });
+    }
   };
 
   handleKey = (evt) => {
-    if (evt.key === 'Escape') return this.hide();
+    if (evt.key === 'Escape') {
+      this.setState({ selectIsOpen: false });
+    }
     if (evt.target.dataset.select === 'option' && evt.key === 'Enter') {
       this._params.multiSelect
         ? this._updateMulti(evt.target)
@@ -326,10 +335,10 @@ class CustomSelect extends State {
     }px`;
     this.setState({ selectIsOpen: true });
 
-    // закрытие селекта при клике вне окна
+    // добавление обработчика закрытие селекта при клике вне окна
     document.addEventListener('click', this.handleEventWindow);
 
-    // закрытие селекта при клике клавиши Esc
+    //добавление обработчика закрытие селекта при клике клавиши Esc
     document.addEventListener('keydown', this.handleKey);
   }
 
@@ -341,17 +350,15 @@ class CustomSelect extends State {
     });
     this.setState({ selectIsOpen: false });
 
-    // закрытие селекта при клике вне окна
+    // удаление обработчика закрытие селекта при клике вне окна
     document.removeEventListener('click', this.handleEventWindow);
 
-    // закрытие селекта при клике клавиши Esc
+    // удаление обработчика закрытие селекта при клике клавиши Esc
     document.removeEventListener('keydown', this.handleKey);
   }
 
   toggle() {
-    // TODO насчет этого тоже пообщаться
-    // this.setState({ selectIsOpen: !this.state.selectIsOpen });
-    this.state.selectIsOpen ? this.hide() : this.show();
+    this.setState({ selectIsOpen: !this.state.selectIsOpen });
   }
 
   dispose() {
