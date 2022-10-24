@@ -2,6 +2,12 @@ import { data } from './test-data.js';
 import State from './state.js';
 const capitalizeFirstLetter = (word) => word[0].toUpperCase() + word.slice(1);
 
+const IDNAME_GROUP = {
+  id: Symbol('#'),
+  value: 'unname',
+  title: 'Unnamed class',
+};
+
 const ClassNames = {
   SELECT: 'select',
   ACTIVE: 'select--show',
@@ -21,6 +27,7 @@ const Selectors = {
   SEARCH: '.select__search',
   PARENT_OPTIONS: '.select__options',
   GROUP_TITLE: '.select__group-title',
+  BUTTON_DELETE: '.select__toggle--close',
 };
 
 const selectAttributes = {
@@ -39,49 +46,56 @@ const defaultParams = {
 };
 
 class CustomSelect extends State {
+  #select;
+  #searchEl;
+  #parentOptions;
+  #optionsEl;
+  #toggleEl;
+  #onClickFn;
+  #groupsOptions;
+  #quantityTitle;
+  #params;
+
   constructor(targetSelect, params = {}) {
     super({
       activeOptions: [],
       selectIsOpen: false,
       searchValue: '',
     });
-    this._groupsOptions = null;
-    this._quantityTitle = 0;
-    this._idUnname = Symbol('#');
+    this.#groupsOptions = null;
+    this.#quantityTitle = 0;
 
-    this._select =
+    this.#select =
       typeof targetSelect === 'string'
         ? document.querySelector(targetSelect)
         : targetSelect;
 
-    this._params = {
+    this.#params = {
       ...defaultParams,
       ...params,
     };
 
-    if (!this._params.options.length) {
+    if (!this.#params.options.length) {
       return;
     }
 
-    this._select.classList.add(ClassNames.SELECT);
-    this._select.innerHTML = this.getTemplate();
-    this._searchEl = this._select.querySelector(Selectors.SEARCH);
-    this._parentOptions = this._select.querySelector(Selectors.PARENT_OPTIONS);
-    this._optionsEl = this._select.querySelectorAll(Selectors.OPTION);
-    this._toggleEl = this._select.querySelector(Selectors.DATA_TOGGLE);
-    this._onClickFn = this._onClick.bind(this);
-    this._select.addEventListener('click', this._onClickFn);
-    this._select.addEventListener('input', ({ target }) => {
+    this.#select.classList.add(ClassNames.SELECT);
+    this.#select.innerHTML = this.getTemplate();
+    this.#searchEl = this.#select.querySelector(Selectors.SEARCH);
+    this.#parentOptions = this.#select.querySelector(Selectors.PARENT_OPTIONS);
+    this.#optionsEl = this.#select.querySelectorAll(Selectors.OPTION);
+    this.#toggleEl = this.#select.querySelector(Selectors.DATA_TOGGLE);
+    this.#onClickFn = this.#onClick.bind(this);
+    this.#select.addEventListener('click', this.#onClickFn);
+    this.#select.addEventListener('input', ({ target }) => {
       if (target.dataset.select === 'input-search') {
         this.setState({ searchValue: target.value });
       }
     });
 
     this.on('selectIsOpen', (isOpen) => (isOpen ? this.show() : this.hide()));
-    this.on('activeOptions', () => {
-      this._params.multiSelect ? this._updateMulti() : this._updateSingle();
-    });
-    this.on('searchValue', () => this._changeSearchValue());
+    this.on('activeOptions', () => this.#update());
+    this.on('searchValue', () => this.#changeSearchValue());
   }
 
   getTemplate() {
@@ -93,16 +107,12 @@ class CustomSelect extends State {
       groups,
       groupOptions,
       maxVisibleOptions,
-    } = this._params;
+    } = this.#params;
 
     const { title, value } = selectAttributes;
 
     // добавление группы "Unname" в массив groups
-    groups.push({
-      id: this._idUnname,
-      value: 'unname',
-      title: 'Unnamed class',
-    });
+    groups.push(IDNAME_GROUP);
 
     const createOption = (
       option
@@ -115,21 +125,21 @@ class CustomSelect extends State {
   ${option.title}
   </li>`;
 
-    this._params.groupedOptions = groups.map(({ id }) =>
-      options.filter(({ groupId }) => (groupId || this._idUnname) === id)
+    this.#params.groupedOptions = groups.map(({ id }) =>
+      options.filter(({ groupId }) => (groupId || IDNAME_GROUP.id) === id)
     );
 
     let counter = 0;
-    const itemsOptions = this._params.groupedOptions
+    const itemsOptions = this.#params.groupedOptions
       .map((groupElems, index) => {
         //подсчет заголовков для рассчеты высоты скролла
         if (maxVisibleOptions > counter) {
           counter += groupElems.length;
-          this._quantityTitle = index + 1;
+          this.#quantityTitle = index + 1;
         }
 
         const group = groups.find(
-          ({ id }) => (groupElems[0].groupId || this._idUnname) === id
+          ({ id }) => (groupElems[0].groupId || IDNAME_GROUP.id) === id
         );
 
         const titleGroup = group.title;
@@ -159,14 +169,14 @@ class CustomSelect extends State {
     </div>`;
   }
 
-  _getActiveOptionTemplate(value) {
+  #getActiveOptionTemplate(value) {
     return /*html*/ `<span class="select__toggle--title">
     ${capitalizeFirstLetter(value)}
     <button class="select__toggle--close" data-value="${value}" data-select="delete"></button>
   </span>`;
   }
 
-  _onClick({ target }) {
+  #onClick({ target }) {
     const { select: type, value } = target.dataset;
 
     if (!type) return;
@@ -176,35 +186,35 @@ class CustomSelect extends State {
         this.toggle();
         break;
       case 'option':
-        this._changeOptionState(target);
+        this.#changeOptionState(target);
         break;
       case 'delete': {
-        const option = [...this._optionsEl].find(
+        const option = [...this.#optionsEl].find(
           (el) => el.dataset.value === value
         );
-        this._changeOptionState(option);
+        this.#changeOptionState(option);
         break;
       }
     }
   }
 
-  _changeSearchValue() {
+  #changeSearchValue() {
     const searchValue = this.state.searchValue.toLowerCase();
-    const groupsEls = [...this._parentOptions.children];
+    const groupsEls = [...this.#parentOptions.children];
 
-    const resultOptions = this._params.groupedOptions
+    const resultOptions = this.#params.groupedOptions
       .map((optionsArr) =>
         optionsArr.filter(({ title }) =>
           title.toLowerCase().includes(searchValue)
         )
       )
       .reduce((result, arr) => {
-        result[arr[0]?.groupId || this._idUnname] = arr.map(({ id }) => id);
+        result[arr[0]?.groupId || IDNAME_GROUP.id] = arr.map(({ id }) => id);
         return result;
       }, {});
 
     groupsEls.forEach((groupEl) => {
-      const groupId = +groupEl.dataset.id || this._idUnname;
+      const groupId = +groupEl.dataset.id || IDNAME_GROUP.id;
       const includeGroup = resultOptions[groupId];
 
       groupEl.classList.toggle(ClassNames.HIDE, !includeGroup?.length);
@@ -221,74 +231,74 @@ class CustomSelect extends State {
     });
   }
 
-  changeActiveOption(id) {
-    const option = [...this._optionsEl].find((el) => +el.dataset.id === +id);
-    if (option) {
-      this._params.multiSelect
-        ? this._updateMulti(option)
-        : this._updateSingle(option);
-    } else {
-      throw 'Invalid ID';
-    }
-  }
-
   disable() {
-    this._toggleEl.disabled = true;
-    if (this._select.classList.contains(ClassNames.ACTIVE)) {
+    this.#toggleEl.disabled = true;
+    this.#toggleEl
+      .querySelectorAll(Selectors.BUTTON_DELETE)
+      .forEach((el) => (el.disabled = true));
+
+    if (this.#select.classList.contains(ClassNames.ACTIVE)) {
       this.setState({ selectIsOpen: false });
     }
   }
 
   enable() {
-    this._toggleEl.disabled = false;
+    this.#toggleEl.disabled = false;
+    this.#toggleEl
+      .querySelectorAll(Selectors.BUTTON_DELETE)
+      .forEach((el) => (el.disabled = false));
   }
 
-  _updateSingle() {
-    const option = [...this._optionsEl].find(
-      (el) => el.dataset.value === this.state.activeOptions
-    );
-    const selected = this._select.querySelector(Selectors.OPTION_SELECTED);
-    if (selected) selected.classList.remove(ClassNames.SELECTED);
-    option.classList.add(ClassNames.SELECTED);
-    this._toggleEl.value = option.value;
-    this._toggleEl.textContent = option.textContent;
+  #update() {
+    if (this.#params.multiSelect) {
+      const activeOptions = this.state.activeOptions;
+      this.#optionsEl.forEach((option) =>
+        option.classList.toggle(
+          ClassNames.SELECTED,
+          activeOptions.includes(option.dataset.value)
+        )
+      );
 
-    this.setState({ selectIsOpen: false });
+      if (!activeOptions.length)
+        return (this.#toggleEl.textContent = 'Выберите из списка');
+
+      this.#toggleEl.innerHTML = activeOptions
+        .map(this.#getActiveOptionTemplate)
+        .join('');
+    } else {
+      const option = [...this.#optionsEl].find(
+        (el) => el.dataset.value === this.state.activeOptions
+      );
+      const selected = this.#select.querySelector(Selectors.OPTION_SELECTED);
+      if (selected) selected.classList.remove(ClassNames.SELECTED);
+      option.classList.add(ClassNames.SELECTED);
+      this.#toggleEl.value = option.value;
+      this.#toggleEl.textContent = option.textContent;
+
+      this.setState({ selectIsOpen: false });
+    }
   }
 
-  _updateMulti() {
-    const activeOptions = this.state.activeOptions;
-    this._optionsEl.forEach((option) =>
-      option.classList.toggle(
-        ClassNames.SELECTED,
-        activeOptions.includes(option.dataset.value)
-      )
-    );
-
-    if (!activeOptions.length)
-      return (this._toggleEl.textContent = 'Выберите из списка');
-
-    this._toggleEl.innerHTML = activeOptions
-      .map(this._getActiveOptionTemplate)
-      .join('');
-  }
-
-  _reset() {
-    const selected = this._select.querySelector(Selectors.OPTION_SELECTED);
+  reset() {
+    const selected = this.#select.querySelector(Selectors.OPTION_SELECTED);
     if (selected) {
       selected.classList.remove(ClassNames.SELECTED);
     }
-    this._toggleEl.textContent = 'Выберите из списка';
-    this._toggleEl.value = '';
+    this.#toggleEl.textContent = 'Выберите из списка';
+    this.#toggleEl.value = '';
     return '';
   }
 
-  _changeOptionState(target) {
-    const { value } = target.dataset;
-    let stateActiveOptions;
-    if (target.classList.contains(ClassNames.SELECT)) return;
+  #isActiveOption(target) {
+    return target.classList.contains(ClassNames.SELECT);
+  }
 
-    if (this._params.multiSelect) {
+  #changeOptionState(target) {
+    const { value } = target.dataset;
+    if (this.#isActiveOption(target)) return;
+
+    let stateActiveOptions;
+    if (this.#params.multiSelect) {
       stateActiveOptions = this.state.activeOptions.includes(value)
         ? this.state.activeOptions.filter((el) => el !== value)
         : this.state.activeOptions.concat(value);
@@ -301,20 +311,18 @@ class CustomSelect extends State {
     });
   }
 
-  handleEventWindow = (evt) => {
-    if (!evt.composedPath().includes(this._select)) {
+  #handleEventWindow = (evt) => {
+    if (!evt.composedPath().includes(this.#select)) {
       this.setState({ selectIsOpen: false });
     }
   };
 
-  handleKey = (evt) => {
+  #handleKey = (evt) => {
     if (evt.key === 'Escape') {
       this.setState({ selectIsOpen: false });
     }
     if (evt.target.dataset.select === 'option' && evt.key === 'Enter') {
-      this._params.multiSelect
-        ? this._updateMulti(evt.target)
-        : this._updateSingle(evt.target);
+      this.#changeOptionState(evt.target);
     }
   };
 
@@ -322,39 +330,39 @@ class CustomSelect extends State {
     document.querySelectorAll(Selectors.ACTIVE).forEach((select) => {
       select.classList.remove(ClassNames.ACTIVE);
     });
-    this._select.classList.add(ClassNames.ACTIVE);
-    this._searchEl.focus();
+    this.#select.classList.add(ClassNames.ACTIVE);
+    this.#searchEl.focus();
 
     // расчет динамической высоты options
     const groupTitleHeight =
-      this._parentOptions.querySelector(Selectors.GROUP_TITLE)?.offsetHeight ||
+      this.#parentOptions.querySelector(Selectors.GROUP_TITLE)?.offsetHeight ||
       0;
-    this._parentOptions.style.maxHeight = `${
-      this._optionsEl[0].offsetHeight * this._params.maxVisibleOptions +
-      groupTitleHeight * this._quantityTitle
+    this.#parentOptions.style.maxHeight = `${
+      this.#optionsEl[0].offsetHeight * this.#params.maxVisibleOptions +
+      groupTitleHeight * this.#quantityTitle
     }px`;
     this.setState({ selectIsOpen: true });
 
     // добавление обработчика закрытие селекта при клике вне окна
-    document.addEventListener('click', this.handleEventWindow);
+    document.addEventListener('click', this.#handleEventWindow);
 
     //добавление обработчика закрытие селекта при клике клавиши Esc
-    document.addEventListener('keydown', this.handleKey);
+    document.addEventListener('keydown', this.#handleKey);
   }
 
   hide() {
-    this._select.classList.remove(ClassNames.ACTIVE);
-    this._searchEl.value = '';
-    this._optionsEl.forEach((el) => {
+    this.#select.classList.remove(ClassNames.ACTIVE);
+    this.#searchEl.value = '';
+    this.#optionsEl.forEach((el) => {
       el.classList.remove(ClassNames.SHOW_OPTION);
     });
-    this.setState({ selectIsOpen: false });
+    this.setState({ selectIsOpen: false, searchValue: '' });
 
     // удаление обработчика закрытие селекта при клике вне окна
-    document.removeEventListener('click', this.handleEventWindow);
+    document.removeEventListener('click', this.#handleEventWindow);
 
     // удаление обработчика закрытие селекта при клике клавиши Esc
-    document.removeEventListener('keydown', this.handleKey);
+    document.removeEventListener('keydown', this.#handleKey);
   }
 
   toggle() {
@@ -362,7 +370,7 @@ class CustomSelect extends State {
   }
 
   dispose() {
-    this._select.removeEventListener('click', this._onClickFn);
+    this.#select.removeEventListener('click', this.#onClickFn);
   }
 }
 

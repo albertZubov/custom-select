@@ -172,10 +172,6 @@ input {
   line-height: 28px;
 }
 
-.select__toggle--title:hover {
-  background-color: #c6f1d7b5;
-}
-
 .select__toggle--close {
   width: 12px;
   height: 12px;
