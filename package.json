@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "browser-sync start --server --files \"style/*.css, component/*.js\" "
+    "start": "browser-sync start --open false --server --files \"style/*.css, component/*.js\" "
   },
   "dependencies": {
     "browser-sync": "^2.27.10"
